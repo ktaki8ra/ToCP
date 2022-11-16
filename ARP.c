@@ -60,6 +60,10 @@ void FreeArpRequest(ArpRequest *arp_req) {
 	free(arp_req);
 }
 
+void FreeArpReply(ArpReply *arp_rep) {
+	free(arp_rep);
+}
+
 ARP *NewARP(char *network_if_name, char *dst_ip) {
 	EthernetHeader *eth_header;
 	eth_header = (EthernetHeader *)malloc(sizeof(EthernetHeader));
@@ -87,7 +91,7 @@ void FreeARP(ARP *arp) {
 	free(arp);
 }
 
-void arpSend(int ifindex, ARP *arp) {
+ArpReply *arpSend(int ifindex, ARP *arp) {
 	uint8_t packet[ARP_PACKET_LEN] = {
 		arp->eth_header->DstMacAddr[0], arp->eth_header->DstMacAddr[1], arp->eth_header->DstMacAddr[2], arp->eth_header->DstMacAddr[3], arp->eth_header->DstMacAddr[4], arp->eth_header->DstMacAddr[5],
 		arp->eth_header->SrcMacAddr[0], arp->eth_header->SrcMacAddr[1], arp->eth_header->SrcMacAddr[2], arp->eth_header->SrcMacAddr[3], arp->eth_header->SrcMacAddr[4], arp->eth_header->SrcMacAddr[5],
@@ -135,20 +139,78 @@ void arpSend(int ifindex, ARP *arp) {
         }
         close(sendfd);
 
-        // check ethernet type is ARP and buffer is truely ARP response.
+        // check ethernet type is ARP and buffer is truely ARP reply.
         if((buf[12] == 0x08 && buf[13] == 0x06) && (buf[20] == 0x00 && buf[21] == 0x02)) {
-                printf("IP address:  %d.%d.%d.%d\n", buf[28], buf[29], buf[30], buf[31]);
-                printf("MAC address: %02x:%02x:%02x:%02x:%02x:%02x\n", buf[22], buf[23], buf[24], buf[25], buf[26], buf[27]);
+		return parseArpPacket(buf);
         } else {
 		printf("MAC address: NOT FOUND\n");
 		exit(1);
 	}
 }
 
+ArpReply *parseArpPacket(uint8_t packet[80]) {
+	ArpReply *arpReply;
+	arpReply = (ArpReply *)malloc(sizeof(ArpReply));
+
+	arpReply->HardwareType[0] = packet[14];
+	arpReply->HardwareType[1] = packet[15];
+
+	arpReply->ProtocolType[0] = packet[16];
+	arpReply->ProtocolType[1] = packet[17];
+
+	arpReply->HardwareLen[0] = packet[18];
+
+	arpReply->ProtocolLen[0] = packet[19];
+
+	arpReply->Opcode[0] = packet[20];
+	arpReply->Opcode[1] = packet[21];
+
+	arpReply->SenderHardwareAddr[0] = packet[22];
+	arpReply->SenderHardwareAddr[1] = packet[23];
+	arpReply->SenderHardwareAddr[2] = packet[24];
+	arpReply->SenderHardwareAddr[3] = packet[25];
+	arpReply->SenderHardwareAddr[4] = packet[26];
+	arpReply->SenderHardwareAddr[5] = packet[27];
+
+	arpReply->SenderProtocolAddr[0] = packet[28];
+	arpReply->SenderProtocolAddr[1] = packet[29];
+	arpReply->SenderProtocolAddr[2] = packet[30];
+	arpReply->SenderProtocolAddr[3] = packet[31];
+
+	arpReply->TargetHardwareAddr[0] = packet[32];
+	arpReply->TargetHardwareAddr[1] = packet[33];
+	arpReply->TargetHardwareAddr[2] = packet[34];
+	arpReply->TargetHardwareAddr[3] = packet[35];
+	arpReply->TargetHardwareAddr[4] = packet[36];
+	arpReply->TargetHardwareAddr[5] = packet[37];
+
+	arpReply->TargetProtocolAddr[0] = packet[38];
+	arpReply->TargetProtocolAddr[1] = packet[39];
+	arpReply->TargetProtocolAddr[2] = packet[40];
+	arpReply->TargetProtocolAddr[3] = packet[41];
+
+	return arpReply;
+}
+
 void arp(char *network_if_name, char *dst_ip) {
 	int ifindex;
 	ARP *arp = NewARP(network_if_name, dst_ip);
 	ifindex = get_ifindex_byifname(network_if_name);
-	arpSend(ifindex, arp);
+	ArpReply *arp_rep = arpSend(ifindex, arp);
+	printf("IP address:  %d.%d.%d.%d\n",
+			arp_rep->SenderProtocolAddr[0],
+			arp_rep->SenderProtocolAddr[1],
+			arp_rep->SenderProtocolAddr[2],
+			arp_rep->SenderProtocolAddr[3]
+	);
+	printf("MAC address: %02x:%02x:%02x:%02x:%02x:%02x\n",
+			arp_rep->SenderHardwareAddr[0],
+			arp_rep->SenderHardwareAddr[1],
+			arp_rep->SenderHardwareAddr[2],
+			arp_rep->SenderHardwareAddr[3],
+			arp_rep->SenderHardwareAddr[4],
+			arp_rep->SenderHardwareAddr[5]
+	);
+	FreeArpReply(arp_rep);
 	FreeARP(arp);
 }
